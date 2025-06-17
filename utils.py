@@ -4,6 +4,7 @@ import numpy as np
 from collections import Counter
 
 def tokenize(sentence):
+    # Simple whitespace tokenizer, can be replaced with more language-specific tokenizers
     return sentence.strip().split()
 
 def build_vocab(lines, min_freq=1):
@@ -20,17 +21,25 @@ def build_vocab(lines, min_freq=1):
 def encode_sentence(tokens, vocab):
     return [vocab.get(tok, vocab["<UNK>"]) for tok in tokens]
 
-def align_top1(m_embeds, h_embeds, m_lines, h_lines):
-    # Normalize embeddings
+def cosine_similarity_topk(m_embeds, h_embeds, m_lines, h_lines, top_k=1):
+    # m_embeds: (N, D)
+    # h_embeds: (M, D)
     m_norm = m_embeds / m_embeds.norm(dim=1, keepdim=True)
     h_norm = h_embeds / h_embeds.norm(dim=1, keepdim=True)
     sim_matrix = torch.mm(m_norm, h_norm.t())  # (N, M)
     results = []
     for i, sims in enumerate(sim_matrix):
-        top_val, top_idx = torch.max(sims, 0)
-        results.append({
-            "marathi": m_lines[i],
-            "hindi": h_lines[top_idx],
-            "cosine_similarity": float(top_val)
-        })
+        topk_vals, topk_idx = torch.topk(sims, k=top_k)
+        for val, idx in zip(topk_vals, topk_idx):
+            results.append((m_lines[i], h_lines[idx], float(val)))
     return results
+
+def filter_high_similarity_pairs(aligned_pairs, threshold=0.88):
+    """
+    Filters aligned sentence pairs to only those above the given cosine similarity threshold.
+    """
+    filtered = []
+    for marathi, hindi, sim in aligned_pairs:
+        if sim >= threshold:
+            filtered.append((marathi, hindi, sim))
+    return filtered
